@@ -24,12 +24,14 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     rasterizer.cpp \
+    tgaimage.cpp \
     utils.cpp
 
 HEADERS += \
     IndexedMesh.h \
     mainwindow.h \
     rasterizer.h \
+    tgaimage.h \
     utils.h
 
 FORMS += \
@@ -43,6 +45,6 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 RESOURCES += \
     resources.qrc
 
-copydata.commands = $(COPY_FILE) "$${PWD}/*.obj" $${OUT_PWD}
+copydata.commands = $(COPY_FILE) "$${PWD}/*.obj" "$${PWD}/*.tga" $${OUT_PWD}
 first.depends = $(first) copydata
 QMAKE_EXTRA_TARGETS += first copydata

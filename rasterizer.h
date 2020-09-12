@@ -6,6 +6,7 @@
 #include <QImage>
 #include <memory>
 #include "IndexedMesh.h"
+#include "tgaimage.h"
 class Rasterizer;
 class BaseTriangleShader{
 public:
@@ -20,6 +21,7 @@ private:
     size_t current_face_idx;
     arma::fvec3 current_normal;
     arma::fvec3 current_intensity;
+    arma::fmat current_uv;
     Rasterizer* rasterizer;
     bool ready;
     friend class Rasterizer;
@@ -37,16 +39,20 @@ private:
     std::shared_ptr<arma::fmat44> viewport_matrix_ptr;
     std::shared_ptr<arma::fmat44> projection_matrix_ptr;
     std::shared_ptr<arma::fmat44> modelview_matrix_ptr;
+
+    arma::fvec3 center;
+    bool use_texture;
     size_t img_width,img_height;
     std::vector<arma::fvec3> light_sources;
 
 public:
+    std::shared_ptr<TGAImage> texture_image;
     Rasterizer(std::shared_ptr<IndexedMesh> mesh_ptr,const arma::fvec3& eye,
                const arma::fvec3& center,const std::vector<arma::fvec3>& light_sources,
-               float fov);
+               float fov,const std::string& texture_file);
     void set_matrix(const arma::fvec3& eye,
                     const arma::fvec3& center,
-                    float fov);
+                    float fov,bool use_texture);
     void rasterize_triangle(const arma::fmat& vertices, std::vector<QRgb> & image, std::vector<float>& zbuffer);
     QImage get_image();
 };

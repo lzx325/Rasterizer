@@ -2,19 +2,23 @@
 #include "utils.h"
 Rasterizer::Rasterizer(std::shared_ptr<IndexedMesh> mesh_ptr,const arma::fvec3& eye,
                        const arma::fvec3& center,const std::vector<arma::fvec3>& light_sources,
-                       float fov)\
-    : shader_ptr(new Shader(this)),mesh_ptr(mesh_ptr),light_sources(light_sources){
-    set_matrix(eye,center,fov);
+                       float fov,const std::string& texture_file)\
+    : shader_ptr(new Shader(this)),mesh_ptr(mesh_ptr),
+      texture_image(new TGAImage()),use_texture(false),light_sources(light_sources){
+    set_matrix(eye,center,fov,false);
+    bool status=texture_image->read_tga_file(texture_file.c_str());
+    assert(status);
+
 }
-void Rasterizer::set_matrix(const arma::fvec3 &eye, const arma::fvec3 &center, float fov){
+void Rasterizer::set_matrix(const arma::fvec3 &eye, const arma::fvec3 &center, float fov,bool use_texture){
     float n=-1;
     float f=-500;
     float t=fabsf(n)*fov;
     float b=-fabsf(n)*fov;
     float l=-fabsf(n)*fov*4.f/3.f;
     float r=fabsf(n)*fov*4.f/3.f;
-    img_width=1600;
-    img_height=1200;
+    img_width=800;
+    img_height=600;
     size_t x=0;
     size_t y=0;
     size_t w=img_width;
@@ -25,6 +29,8 @@ void Rasterizer::set_matrix(const arma::fvec3 &eye, const arma::fvec3 &center, f
     arma::fmat44 M_proj=M_ortho*M_per;
     projection_matrix_ptr=std::shared_ptr<arma::fmat44>(new arma::fmat44(M_proj));
     modelview_matrix_ptr=std::shared_ptr<arma::fmat44>(new arma::fmat44(modelview(eye,center)));
+    this->use_texture=use_texture;
+    this->center=center;
 }
 void Rasterizer::rasterize_triangle(const arma::fmat &vertices, std::vector<QRgb> &image, std::vector<float> &zbuffer){
     assert(vertices.n_rows==4 and vertices.n_cols==3);
@@ -53,8 +59,6 @@ void Rasterizer::rasterize_triangle(const arma::fmat &vertices, std::vector<QRgb
         for (P(1)=(unsigned int)bboxmin(1); P(1)<=bboxmax(1); P(1)++) {
             arma::fvec3 bc_screen;
             bc_screen  = barycentric(pts2.row(0).t(), pts2.row(1).t(), pts2.row(2).t(), arma::conv_to<arma::fvec>::from(P));
-
-
             arma::fvec3 bc_clip=bc_screen;
             float frag_depth = arma::dot(vertices.row(2).t(),bc_clip);
             if (bc_screen(0)<0 || bc_screen(1)<0 || bc_screen(2)<0 || zbuffer[P(0)+P(1)*img_width]>frag_depth) {
@@ -66,7 +70,6 @@ void Rasterizer::rasterize_triangle(const arma::fmat &vertices, std::vector<QRgb
                 image.at(P(0)+P(1)*img_width)=color;
             }
         }
-
     }
 }
 
@@ -118,15 +121,53 @@ void Shader::set_face(size_t current_face_idx)
             current_intensity(i)+=std::max(0.f, arma::dot(current_normal,light_dir));
         }
     }
+    current_uv=arma::fmat(2,3,arma::fill::zeros);
+    for(size_t i=0;i<3;i++){
+        arma::fvec3 vert=rasterizer->mesh_ptr->get_vert(current_face_idx,i);
+        arma::fvec3 coord=vert-rasterizer->center;
+        if(arma::norm(coord)<1e-6f){
+            assert(false);
+            coord[0]=1e-6f;
+        }
+        float u=(M_PI+atan2f(coord[1],coord[0]))/(2*M_PI);
+        float v=(M_PI-acosf(coord[2]/arma::norm(coord)))/M_PI;
+        current_uv(0,i)=u;
+        current_uv(1,i)=v;
+    }
     ready=true;
 }
-
+int times=0;
 bool Shader::fragment(const arma::fvec3& bar, QRgb& color)
 {
     float intensity=arma::dot(bar,current_intensity);
-    if(intensity>1) intensity=1;
-    color=qRgb(int(255*intensity),int(255*intensity),int(255*intensity));
-    return false;
+
+    if(rasterizer->use_texture){
+        arma::fvec2 uv=current_uv*bar;
+        int texture_height=rasterizer->texture_image->get_height();
+        int texture_width=rasterizer->texture_image->get_width();
+        TGAColor tga_color=rasterizer->texture_image->get(int(uv[0]*texture_width),int(uv[1]*texture_height));
+//        arma::fvec4 frag_color={(float) tga_color[0],
+//                                (float) tga_color[1],
+//                                (float) tga_color[2],
+//                                (float) tga_color[3]};
+        arma::fvec4 frag_color={(float) tga_color[2],(float) tga_color[1],(float) tga_color[0],(float) tga_color[3]};
+
+        frag_color=frag_color*intensity;
+        if(frag_color.max()>=255){
+            frag_color=frag_color/frag_color.max()*255;
+        }
+
+        arma::Col<int> frag_color_int=arma::conv_to<arma::Col<int> >::from(frag_color);
+
+        color=qRgba(frag_color_int[0],frag_color_int[1],frag_color_int[2],frag_color_int[3]);
+        return false;
+    } else{
+        if(intensity>1) intensity=1;
+        color=qRgb(int(255*intensity),int(255*intensity),int(255*intensity));
+        return false;
+    }
+
+
 }
 void Shader::reset(){
     assert(ready==true);
